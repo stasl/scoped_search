@@ -14,27 +14,8 @@ module ScopedSearch
     # Instances of this class are created when calling scoped_search in your model
     # class, so you should not create instances of this class yourself.
     class Field
-
+      
       attr_reader :definition, :field, :only_explicit, :relation
-
-      # The ActiveRecord-based class that belongs to this field.
-      def klass
-        if relation
-          definition.klass.reflections[relation].klass
-        else
-          definition.klass
-        end
-      end
-
-      # Returns the ActiveRecord column definition that corresponds to this field.
-      def column
-        klass.columns_hash[field.to_s]
-      end
-
-      # Returns the column type of this field.
-      def type
-        column.type
-      end
 
       # Returns true if this field is a datetime-like column
       def datetime?
@@ -96,6 +77,48 @@ module ScopedSearch
         definition.fields[options[:alias]] ||= self                    if options[:alias]
         options[:aliases].each { |al| definition.fields[al] ||= self } if options[:aliases]
       end
+      
+      class ActiveRecord < self
+
+        # The ActiveRecord-based class that belongs to this field.
+        def klass
+          if relation
+            definition.klass.reflections[relation].klass
+          else
+            definition.klass
+          end
+        end
+
+        # Returns the ActiveRecord column definition that corresponds to this field.
+        def column
+          klass.columns_hash[field.to_s]
+        end
+
+        # Returns the column type of this field.
+        def type
+          column.type
+        end
+      end
+      
+      class DataMapper < self
+        
+        def initialize(definition, options = {})
+          super(definition, options)
+        end
+        
+        def klass
+          # TODO: relations
+          definition.klass
+        end
+        
+        def column
+          klass.properties[field.to_sym]
+        end
+        
+        def type
+          column.type.name.split('::').last.downcase.to_sym
+        end
+      end
     end
 
     attr_reader :klass
@@ -110,7 +133,7 @@ module ScopedSearch
       @profile_fields        = {:default => {}}
       @profile_unique_fields = {:default => []}
 
-      register_named_scope! unless klass.respond_to?(:search_for)
+      register_search_for! unless klass.respond_to?(:search_for)
     end
     
     attr_accessor :profile
@@ -148,19 +171,35 @@ module ScopedSearch
 
     # Defines a new search field for this search definition.
     def define(options)
-      Field.new(self, options)
+      if klass.ancestors.include?(ActiveRecord::Base)
+        Field::ActiveRecord.new(self, options)
+      elsif klass.ancestors.include?(DataMapper::Resource)
+        Field::DataMapper.new(self, options)
+      else
+        raise "ORM not supported!"
+      end
     end
 
     protected
 
+    module DataMapperClassMethods
+      
+      def search_for(*args)
+        find_options = ScopedSearch::QueryBuilder.build_query(self.scoped_search, args[0], args[1])
+        raise "Includes are not yet supported in DataMapper!" if find_options[:include]
+        self.all(:conditions => find_options[:conditions])
+      end
+      
+    end
+
     # Registers the search_for named scope within the class that is used for searching.
-    def register_named_scope! # :nodoc
+    def register_search_for! # :nodoc
       if @klass.ancestors.include?(ActiveRecord::Base)
         case ActiveRecord::VERSION::MAJOR
         when 2
           @klass.named_scope(:search_for, lambda { |*args| ScopedSearch::QueryBuilder.build_query(self, args[0], args[1]) })
         when 3
-          @klass.scope(:search_for, lambda { |*args| 
+          @klass.scope(:search_for, lambda { |*args|
             find_options = ScopedSearch::QueryBuilder.build_query(self, args[0], args[1]) 
             search_scope = @klass.scoped
             search_scope = search_scope.where(find_options[:conditions]) if find_options[:conditions]
@@ -170,8 +209,10 @@ module ScopedSearch
         else
           raise "This ActiveRecord version is currently not supported!"
         end
+      elsif @klass.ancestors.include?(DataMapper::Resource)
+        @klass.send(:extend, DataMapperClassMethods)
       else
-        raise "Currently, only ActiveRecord 2.1 or higher is supported!"
+        raise "Currently, only DataMapper and ActiveRecord 2.1 or higher are supported!"
       end
     end
   end

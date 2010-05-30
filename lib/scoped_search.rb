@@ -86,6 +86,15 @@ require 'scoped_search/definition'
 require 'scoped_search/query_language'
 require 'scoped_search/query_builder'
 
-# Import the search_on method in the ActiveReocrd::Base class
-ActiveRecord::Base.send(:extend, ScopedSearch::ClassMethods)
-ActiveRecord::Base.send(:extend, ScopedSearch::BackwardsCompatibility)
+# Integrate into ActiveRecord if it is available
+if Object.const_defined?(:ActiveRecord)
+  # Import the search_on method in the ActiveReocrd::Base class
+  ActiveRecord::Base.send(:extend, ScopedSearch::ClassMethods)
+  ActiveRecord::Base.send(:extend, ScopedSearch::BackwardsCompatibility)
+end
+
+# Integrate into DataMapper if available.
+if Object.const_defined?(:DataMapper)
+  DataMapper::Model.send(:include, ScopedSearch::ClassMethods)
+end
+

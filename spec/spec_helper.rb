@@ -3,6 +3,7 @@ $:.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
 require 'rubygems'
 require 'spec'
 require 'active_record'
+require 'dm-core'
 
 require 'scoped_search'
 

@@ -170,8 +170,9 @@ module ScopedSearch
       # for the SQL query.
       def to_sql(operator = nil, &block) # :yields: finder_option_type, value
         yield(:include, relation) if relation
-        definition.klass.connection.quote_table_name(klass.table_name.to_s) + "." +
-            definition.klass.connection.quote_column_name(field.to_s)
+        # definition.klass.connection.quote_table_name(klass.table_name.to_s) + "." +
+        #     definition.klass.connection.quote_column_name(field.to_s)
+        DataMapper.repository.adapter.property_to_column_name(column, true)
       end
     end
 
